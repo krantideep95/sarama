@@ -1098,7 +1098,7 @@ func NewMockJoinGroupResponse(t TestReporter) *MockJoinGroupResponse {
 	}
 }
 
-func (m *MockJoinGroupResponse) For(reqBody versionedDecoder) encoder {
+func (m *MockJoinGroupResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	req := reqBody.(*JoinGroupRequest)
 	resp := &JoinGroupResponse{
 		Version:       req.Version,
@@ -1162,7 +1162,7 @@ func NewMockLeaveGroupResponse(t TestReporter) *MockLeaveGroupResponse {
 	return &MockLeaveGroupResponse{t: t}
 }
 
-func (m *MockLeaveGroupResponse) For(reqBody versionedDecoder) encoder {
+func (m *MockLeaveGroupResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	resp := &LeaveGroupResponse{
 		Err: m.Err,
 	}
@@ -1185,7 +1185,7 @@ func NewMockSyncGroupResponse(t TestReporter) *MockSyncGroupResponse {
 	return &MockSyncGroupResponse{t: t}
 }
 
-func (m *MockSyncGroupResponse) For(reqBody versionedDecoder) encoder {
+func (m *MockSyncGroupResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	resp := &SyncGroupResponse{
 		Err:              m.Err,
 		MemberAssignment: m.MemberAssignment,
@@ -1217,10 +1217,8 @@ func NewMockHeartbeatResponse(t TestReporter) *MockHeartbeatResponse {
 	return &MockHeartbeatResponse{t: t}
 }
 
-func (m *MockHeartbeatResponse) For(reqBody versionedDecoder) encoder {
-	resp := &HeartbeatResponse{
-		Err: m.Err,
-	}
+func (m *MockHeartbeatResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	resp := &HeartbeatResponse{}
 	return resp
 }
 
