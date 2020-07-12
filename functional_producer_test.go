@@ -1,8 +1,11 @@
+//+build functional
+
 package sarama
 
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +33,13 @@ func TestFuncProducingSnappy(t *testing.T) {
 	testProducingMessages(t, config)
 }
 
+func TestFuncProducingZstd(t *testing.T) {
+	config := NewConfig()
+	config.Version = V2_1_0_0
+	config.Producer.Compression = CompressionZSTD
+	testProducingMessages(t, config)
+}
+
 func TestFuncProducingNoResponse(t *testing.T) {
 	config := NewConfig()
 	config.Producer.RequiredAcks = NoResponse
@@ -52,7 +62,7 @@ func TestFuncMultiPartitionProduce(t *testing.T) {
 	config.Producer.Flush.Frequency = 50 * time.Millisecond
 	config.Producer.Flush.Messages = 200
 	config.Producer.Return.Successes = true
-	producer, err := NewSyncProducer(kafkaBrokers, config)
+	producer, err := NewSyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +90,7 @@ func TestFuncProducingToInvalidTopic(t *testing.T) {
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
 
-	producer, err := NewSyncProducer(kafkaBrokers, nil)
+	producer, err := NewSyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +106,89 @@ func TestFuncProducingToInvalidTopic(t *testing.T) {
 	safeClose(t, producer)
 }
 
+func TestFuncProducingIdempotentWithBrokerFailure(t *testing.T) {
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	config := NewConfig()
+	config.Producer.Flush.Frequency = 250 * time.Millisecond
+	config.Producer.Idempotent = true
+	config.Producer.Timeout = 500 * time.Millisecond
+	config.Producer.Retry.Max = 1
+	config.Producer.Retry.Backoff = 500 * time.Millisecond
+	config.Producer.Return.Successes = true
+	config.Producer.Return.Errors = true
+	config.Producer.RequiredAcks = WaitForAll
+	config.Net.MaxOpenRequests = 1
+	config.Version = V0_11_0_0
+
+	producer, err := NewSyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer safeClose(t, producer)
+
+	// Successfully publish a few messages
+	for i := 0; i < 10; i++ {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder(fmt.Sprintf("%d message", i)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// break the brokers.
+	for proxyName, proxy := range FunctionalTestEnv.Proxies {
+		if !strings.Contains(proxyName, "kafka") {
+			continue
+		}
+		if err := proxy.Disable(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// This should fail hard now
+	for i := 10; i < 20; i++ {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder(fmt.Sprintf("%d message", i)),
+		})
+		if err == nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Now bring the proxy back up
+	for proxyName, proxy := range FunctionalTestEnv.Proxies {
+		if !strings.Contains(proxyName, "kafka") {
+			continue
+		}
+		if err := proxy.Enable(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// We should be able to publish again (once everything calms down)
+	// (otherwise it times out)
+	for {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder("comeback message"),
+		})
+		if err == nil {
+			break
+		}
+	}
+}
+
 func testProducingMessages(t *testing.T, config *Config) {
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
 
 	// Configure some latency in order to properly validate the request latency metric
-	for _, proxy := range Proxies {
+	for _, proxy := range FunctionalTestEnv.Proxies {
 		if _, err := proxy.AddToxic("", "latency", "", 1, toxiproxy.Attributes{"latency": 10}); err != nil {
 			t.Fatal("Unable to configure latency toxicity", err)
 		}
@@ -110,7 +197,7 @@ func testProducingMessages(t *testing.T, config *Config) {
 	config.Producer.Return.Successes = true
 	config.Consumer.Return.Errors = true
 
-	client, err := NewClient(kafkaBrokers, config)
+	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +389,7 @@ func benchmarkProducer(b *testing.B, conf *Config, topic string, value Encoder) 
 		}()
 	}
 
-	producer, err := NewAsyncProducer(kafkaBrokers, conf)
+	producer, err := NewAsyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, conf)
 	if err != nil {
 		b.Fatal(err)
 	}
