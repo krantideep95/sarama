@@ -1098,7 +1098,7 @@ func NewMockJoinGroupResponse(t TestReporter) *MockJoinGroupResponse {
 	}
 }
 
-func (m *MockJoinGroupResponse) For(reqBody versionedDecoder) encoder {
+func (m *MockJoinGroupResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	req := reqBody.(*JoinGroupRequest)
 	resp := &JoinGroupResponse{
 		Version:       req.Version,
@@ -1162,7 +1162,7 @@ func NewMockLeaveGroupResponse(t TestReporter) *MockLeaveGroupResponse {
 	return &MockLeaveGroupResponse{t: t}
 }
 
-func (m *MockLeaveGroupResponse) For(reqBody versionedDecoder) encoder {
+func (m *MockLeaveGroupResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	resp := &LeaveGroupResponse{
 		Err: m.Err,
 	}
